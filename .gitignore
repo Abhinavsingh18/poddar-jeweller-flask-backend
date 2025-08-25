@@ -1,43 +1,70 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+# Replace 'venv' with your virtual environment's directory name if different
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+.flaskenv
+
+# IDE and Editor specific files
+.idea/
+.vscode/
 *.swp
+*.swo
+
+# Compiled Python files
+*.pyc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+venv/Lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Flask session files (if using filesystem-based sessions, though not evident yet)
+instance/
+*.sqlite
+*.sqlite3
+
+# Log files
+logs/
+*.log
+
+# Coverage reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+
+# Temporary files / OS generated files
 .DS_Store
-.atom/
-.buildlog/
-.history
-.svn/
-migrate_working_dir/
+Thumbs.db
+Desktop.ini
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-../.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# PyInstaller (if you ever use it to package your app)
+# *.manifest
+# *.spec
