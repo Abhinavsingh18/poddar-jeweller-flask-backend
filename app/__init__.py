@@ -2,7 +2,7 @@ from flask import Flask
 from flask_pymongo import PyMongo
 from flask_cors import CORS
 from .config import config_by_name # Import the config dictionary from app.config
-
+import os # <--- ADD THIS LINE
 mongo = PyMongo() # Initialize PyMongo, will be configured in create_app
 
 def create_app(config_name='default'):
