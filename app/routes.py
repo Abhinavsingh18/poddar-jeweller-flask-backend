@@ -684,6 +684,176 @@ def admin_delete_slider_image(decoded_token_data, image_id):
         return jsonify({"message": "An internal server error occurred", "error": str(e)}), 500
 
 # --- (Your existing Admin Login Route, Product Routes, etc., should follow or precede) ---
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ NEW: HOME SCREEN VIDEO ROUTES +++++++++++++++++++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+@main_bp.route('/home-video-details', methods=['GET'])
+def get_home_video_details():
+    """
+    Fetches the currently active home screen video details.
+    Publicly accessible.
+    """
+    current_app.logger.info("Attempting to fetch home screen video details.")
+    try:
+        settings_collection = mongo.db.app_settings
+        # Assuming a single document stores this config, identified by 'config_type'
+        video_config_doc = settings_collection.find_one({"config_type": "home_video"})
+
+        if video_config_doc and video_config_doc.get("videoUrl"):
+            # Ensure videoUrl is not empty or just whitespace
+            video_url = video_config_doc.get("videoUrl")
+            if isinstance(video_url, str) and video_url.strip():
+                response_data = {
+                    "title": video_config_doc.get("title"), # Can be None or empty
+                    "videoUrl": video_url.strip(),
+                    "lastUpdated": to_iso_z(video_config_doc.get("lastUpdated"))
+                }
+                current_app.logger.info(f"Successfully fetched home video details: Title '{response_data.get('title')}'")
+                return jsonify(response_data), 200
+            else:
+                current_app.logger.info("Home video configuration found, but videoUrl is empty or invalid.")
+                return jsonify({"message": "Home video URL is not properly configured."}), 404
+        else:
+            current_app.logger.info("No active home video configuration found or videoUrl is missing.")
+            return jsonify({"message": "No home video is currently configured."}), 404
+    except Exception as e:
+        current_app.logger.error(f"Error fetching home video details: {e}", exc_info=True)
+        return jsonify({"message": "Error fetching home video details", "error": str(e)}), 500
+
+@main_bp.route('/admin/home-video', methods=['POST'])
+@token_required
+def admin_set_or_update_home_video(decoded_token_data): # Renamed for clarity (create/update)
+    """
+    Sets or updates the home screen video details.
+    Uses upsert: creates the config if it doesn't exist, updates it if it does.
+    Expects JSON: {"title": "Optional Video Title", "videoUrl": "https://..."}
+    """
+    admin_username = decoded_token_data.get('username', 'Unknown Admin')
+    current_app.logger.info(f"Admin {admin_username} attempting to set/update home screen video.")
+    try:
+        data = request.get_json()
+        if not data:
+            current_app.logger.warning(f"Admin {admin_username} home video set/update: No JSON data.")
+            return jsonify({"message": "Request body must be JSON"}), 400
+
+        video_url_from_req = data.get('videoUrl')
+        title_from_req = data.get('title', "") # Title is optional, defaults to empty string
+
+        if not video_url_from_req: # video_url is essential
+            current_app.logger.warning(f"Admin {admin_username} home video set/update: Missing 'videoUrl'.")
+            return jsonify({"message": "videoUrl is required"}), 400
+
+        if not isinstance(video_url_from_req, str) or not video_url_from_req.strip().startswith(('http://', 'https://')):
+            current_app.logger.warning(f"Admin {admin_username} home video set/update: Invalid URL format for '{video_url_from_req}'.")
+            return jsonify({"message": "Invalid videoUrl format. Must be a valid HTTP/HTTPS URL."}), 400
+
+        if not isinstance(title_from_req, str):
+             current_app.logger.warning(f"Admin {admin_username} home video set/update: Invalid title format.")
+             return jsonify({"message": "Title must be a string."}), 400
+
+        settings_collection = mongo.db.app_settings
+        config_filter = {"config_type": "home_video"}
+
+        update_payload = {
+            "title": title_from_req.strip(),
+            "videoUrl": video_url_from_req.strip(),
+            "lastUpdated": datetime.datetime.utcnow(),
+            "lastUpdatedBy": admin_username
+        }
+
+        result = settings_collection.update_one(
+            config_filter,
+            {
+                "$set": update_payload,
+                "$setOnInsert": {
+                    "config_type": "home_video",
+                    "createdAt": datetime.datetime.utcnow(),
+                    "createdBy": admin_username
+                }
+            },
+            upsert=True
+        )
+
+        updated_config_doc = settings_collection.find_one(config_filter)
+        if not updated_config_doc:
+            current_app.logger.error(f"Admin {admin_username} home video set/update: Failed to retrieve document after upsert for video URL '{video_url_from_req}'.")
+            return jsonify({"message": "Error confirming home video update."}), 500
+
+        updated_config_doc['_id'] = str(updated_config_doc['_id'])
+        updated_config_doc['lastUpdated'] = to_iso_z(updated_config_doc.get('lastUpdated'))
+        if 'createdAt' in updated_config_doc: # Only present if newly created
+            updated_config_doc['createdAt'] = to_iso_z(updated_config_doc.get('createdAt'))
+
+        if result.upserted_id:
+            current_app.logger.info(f"Admin {admin_username} successfully set new home video: URL '{video_url_from_req}'.")
+            return jsonify({"message": "Home video set successfully.", "videoDetails": updated_config_doc}), 201
+        elif result.modified_count > 0:
+            current_app.logger.info(f"Admin {admin_username} successfully updated home video to URL '{video_url_from_req}'.")
+            return jsonify({"message": "Home video updated successfully.", "videoDetails": updated_config_doc}), 200
+        elif result.matched_count > 0 :
+            current_app.logger.info(f"Admin {admin_username} home video set/update: No change to video details (URL '{video_url_from_req}').")
+            return jsonify({"message": "Home video details were not changed.", "videoDetails": updated_config_doc}), 200
+        else:
+            current_app.logger.error(f"Admin {admin_username} home video set/update: Unexpected database result for URL '{video_url_from_req}'.")
+            return jsonify({"message": "An unexpected error occurred during home video update."}), 500
+
+    except Exception as e:
+        current_app.logger.error(f"Error setting/updating home video by admin {admin_username}: {e}", exc_info=True)
+        return jsonify({"message": "An internal server error occurred", "error": str(e)}), 500
+
+@main_bp.route('/admin/home-video', methods=['DELETE'])
+@token_required
+def admin_clear_home_video(decoded_token_data):
+    """
+    Clears the home screen video configuration by setting videoUrl and title to None.
+    """
+    admin_username = decoded_token_data.get('username', 'Unknown Admin')
+    current_app.logger.info(f"Admin {admin_username} attempting to clear home screen video.")
+    try:
+        settings_collection = mongo.db.app_settings
+        config_filter = {"config_type": "home_video"}
+
+        update_payload = {
+            "title": None,
+            "videoUrl": None, # Set to null to indicate no video
+            "lastUpdated": datetime.datetime.utcnow(),
+            "lastUpdatedBy": admin_username
+        }
+        result = settings_collection.update_one(
+            config_filter,
+            {"$set": update_payload}
+            # No $setOnInsert here as we only update if it exists; if not, it's already "cleared"
+        )
+
+        if result.matched_count > 0:
+            if result.modified_count > 0:
+                current_app.logger.info(f"Admin {admin_username} successfully cleared home video URL and title.")
+                # Fetch and return the cleared state
+                cleared_doc = settings_collection.find_one(config_filter)
+                if cleared_doc:
+                    cleared_doc['_id'] = str(cleared_doc['_id'])
+                    cleared_doc['lastUpdated'] = to_iso_z(cleared_doc.get('lastUpdated'))
+                    if 'createdAt' in cleared_doc: cleared_doc['createdAt'] = to_iso_z(cleared_doc.get('createdAt'))
+                    return jsonify({"message": "Home video cleared successfully.", "videoDetails": cleared_doc}), 200
+                else: # Should not happen if matched_count > 0
+                    return jsonify({"message": "Home video cleared, but error fetching confirmation."}), 200
+
+            else: # Matched but not modified (already cleared)
+                current_app.logger.info(f"Admin {admin_username} clear home video: Video was already cleared or not set with a URL.")
+                return jsonify({"message": "Home video was already cleared or had no URL set."}), 200
+        else: # No document with config_type: "home_video" found
+            current_app.logger.info(f"Admin {admin_username} clear home video: No configuration document found to clear.")
+            return jsonify({"message": "No home video configuration was set to clear."}), 200 # It's effectively cleared
+
+    except Exception as e:
+        current_app.logger.error(f"Error clearing home video by admin {admin_username}: {e}", exc_info=True)
+        return jsonify({"message": "An internal server error occurred while clearing home video", "error": str(e)}), 500
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ END: HOME SCREEN VIDEO ROUTES +++++++++++++++++++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 
 
 # --- Admin Login Route ---
@@ -1078,3 +1248,4 @@ def admin_delete_coin(decoded_token_data, mongo_id):
     except Exception as e:
         current_app.logger.error(f"Error deleting coin MongoDB ID {mongo_id} by admin {admin_username}: {e}", exc_info=True)
         return jsonify({"message": "Error deleting coin", "error": str(e)}), 500
+
