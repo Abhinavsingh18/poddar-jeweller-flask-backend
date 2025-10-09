@@ -682,6 +682,99 @@ def admin_delete_slider_image(decoded_token_data, image_id):
     except Exception as e:
         current_app.logger.error(f"Error deleting slider image ID {image_id} by admin {admin_username}: {e}", exc_info=True)
         return jsonify({"message": "An internal server error occurred", "error": str(e)}), 500
+# app/routes.py
+# Paste this in the same place you put the new routes before
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ CORRECTED: CONTACT INFO & SOCIAL LINKS ROUTES +++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+@main_bp.route('/contact-info', methods=['GET'])
+def get_contact_info():
+    """
+    Fetches the main contact info document.
+    This is public so the app can get the numbers.
+    """
+    current_app.logger.info("Fetching public contact information.")
+    try:
+        # --- FIX: Use current_app.db instead of mongo.db ---
+        settings_collection = current_app.db.app_settings
+        contact_doc = settings_collection.find_one({"config_type": "contact_info"})
+
+        if contact_doc:
+            response_data = {
+                "phone_number": contact_doc.get("phone_number"),
+                "whatsapp_number": contact_doc.get("whatsapp_number"),
+                "whatsapp_text": contact_doc.get("whatsapp_text"),
+                "instagram_url": contact_doc.get("instagram_url"),
+                "lastUpdated": to_iso_z(contact_doc.get("lastUpdated"))
+            }
+            return jsonify(response_data), 200
+        else:
+            current_app.logger.warning("Contact info not found in database.")
+            return jsonify({"message": "Contact info has not been configured yet."}), 404
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching contact info: {e}", exc_info=True)
+        return jsonify({"message": "Error fetching contact info", "error": str(e)}), 500
+
+@main_bp.route('/admin/contact-info', methods=['PUT'])
+@token_required
+def admin_update_contact_info(decoded_token_data):
+    """
+    Admin endpoint to create or update the contact info.
+    Protected by token authentication.
+    """
+    admin_username = decoded_token_data.get('username', 'Unknown Admin')
+    current_app.logger.info(f"Admin {admin_username} attempting to update contact info.")
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"message": "Request body must be JSON"}), 400
+
+        # --- FIX: Use current_app.db instead of mongo.db ---
+        settings_collection = current_app.db.app_settings
+        config_filter = {"config_type": "contact_info"}
+
+        update_payload = {}
+        fields_to_update = ["phone_number", "whatsapp_number", "whatsapp_text", "instagram_url"]
+        for field in fields_to_update:
+            if field in data and isinstance(data[field], str):
+                update_payload[field] = data[field].strip()
+
+        if not update_payload:
+            return jsonify({"message": "No valid fields provided for update"}), 400
+
+        update_payload["lastUpdated"] = datetime.datetime.utcnow()
+        update_payload["lastUpdatedBy"] = admin_username
+
+        result = settings_collection.update_one(
+            config_filter,
+            {
+                "$set": update_payload,
+                "$setOnInsert": { "config_type": "contact_info", "createdAt": datetime.datetime.utcnow() }
+            },
+            upsert=True
+        )
+
+        updated_doc = settings_collection.find_one(config_filter)
+        updated_doc['_id'] = str(updated_doc['_id'])
+        updated_doc['lastUpdated'] = to_iso_z(updated_doc.get('lastUpdated'))
+
+        message = "Contact info updated successfully."
+        if result.upserted_id:
+            message = "Contact info created successfully."
+
+        current_app.logger.info(f"Admin {admin_username}: {message}")
+        return jsonify({"message": message, "contactInfo": updated_doc}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error updating contact info by admin {admin_username}: {e}", exc_info=True)
+        return jsonify({"message": "An internal server error occurred", "error": str(e)}), 500
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ END: CORRECTED ROUTES +++++++++++++++++++++++++++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # --- (Your existing Admin Login Route, Product Routes, etc., should follow or precede) ---
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
