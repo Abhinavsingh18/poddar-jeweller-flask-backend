@@ -1,7 +1,7 @@
 # app/routes.py
 
 from flask import Blueprint, jsonify, request, current_app
-from . import mongo # Import the mongo instance from app/__init__.py
+# from . import mongo # Import the mongo instance from app/__init__.py
 from bson import ObjectId
 from bson.errors import InvalidId
 from werkzeug.security import check_password_hash # For login
@@ -46,7 +46,7 @@ def token_required(f):
 
             decoded_payload = jwt.decode(token, secret_key, algorithms=["HS256"])
             # Example: Fetch user from DB based on token data to ensure user exists
-            # admin_user = current_app.db.admins.find_one({"_id": ObjectId(decoded_payload.get("user_id"))})
+            # admin_user = mongo.db.admins.find_one({"_id": ObjectId(decoded_payload.get("user_id"))})
             # if not admin_user:
             #     current_app.logger.warning(f"Token valid, but user ID {decoded_payload.get('user_id')} not found in database.")
             #     return jsonify({'message': 'Token is invalid, user not found!'}), 401
@@ -71,7 +71,7 @@ def token_required(f):
 @main_bp.route('/products', methods=['GET'])
 def get_products():
     try:
-        products_collection = current_app.db.products
+        products_collection = mongo.db.products
         products_cursor = products_collection.find({})
         products_list = []
         for product in products_cursor:
@@ -86,7 +86,7 @@ def get_products():
 @main_bp.route('/products/<string:product_id>', methods=['GET'])
 def get_product(product_id):
     try:
-        products_collection = current_app.db.products
+        products_collection = mongo.db.products
         try:
             db_product_id = ObjectId(product_id)
         except InvalidId:
@@ -173,8 +173,8 @@ def admin_add_product(decoded_token_data):
             "lastUpdatedBy": admin_username
         }
 
-        result = current_app.db.products.insert_one(new_product)
-        inserted_product = current_app.db.products.find_one({"_id": result.inserted_id})
+        result = mongo.db.products.insert_one(new_product)
+        inserted_product = mongo.db.products.find_one({"_id": result.inserted_id})
         if inserted_product:
             inserted_product['_id'] = str(inserted_product['_id'])
             if 'addedDate' in inserted_product: # no need to check type, will be datetime from DB
@@ -229,7 +229,7 @@ def admin_update_product(decoded_token_data, mongo_id):
                  update_fields["karat"] = None # Explicitly set Karat to null if metal changes from Gold
             else: # mainCategory is not in payload, check existing product's mainCategory
                 if not current_product_for_main_cat_check:
-                    current_product_for_main_cat_check = current_app.db.products.find_one({"_id": db_id})
+                    current_product_for_main_cat_check = mongo.db.products.find_one({"_id": db_id})
                 if current_product_for_main_cat_check and current_product_for_main_cat_check.get("mainCategory") == "Gold":
                     if not karat_value or not isinstance(karat_value, str) or not karat_value.strip():
                          return jsonify({"message": "Karat is required and must be non-empty for Gold products"}), 400
@@ -269,12 +269,12 @@ def admin_update_product(decoded_token_data, mongo_id):
         update_fields["lastUpdatedDate"] = datetime.datetime.utcnow()
         update_fields["lastUpdatedBy"] = admin_username
 
-        result = current_app.db.products.update_one({"_id": db_id}, {"$set": update_fields})
+        result = mongo.db.products.update_one({"_id": db_id}, {"$set": update_fields})
 
         if result.matched_count == 0:
             return jsonify({"message": "Product not found"}), 404
 
-        updated_product_doc = current_app.db.products.find_one({"_id": db_id})
+        updated_product_doc = mongo.db.products.find_one({"_id": db_id})
         if not updated_product_doc:
             return jsonify({"message": "Error retrieving product after update"}), 500
 
@@ -310,7 +310,7 @@ def admin_delete_product(decoded_token_data, mongo_id):
         # This is a more advanced check and depends on your application's data integrity rules.
         # For now, we'll proceed with a direct delete.
 
-        result = current_app.db.products.delete_one({"_id": db_id})
+        result = mongo.db.products.delete_one({"_id": db_id})
 
         if result.deleted_count == 0:
             current_app.logger.warning(f"Admin {admin_username} failed to delete non-existent product MongoDB ID: {mongo_id}")
@@ -334,7 +334,7 @@ def admin_delete_product(decoded_token_data, mongo_id):
 def get_bank_details(): # removed decoded_token_data as it's public
     current_app.logger.info(f"Attempting to fetch bank details (public endpoint).")
     try:
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         bank_details_filter = {"config_type": "bank_details"}
         bank_details_doc = settings_collection.find_one(bank_details_filter)
 
@@ -378,7 +378,7 @@ def update_bank_details(decoded_token_data):
             current_app.logger.warning(f"Admin {admin_username} attempt to update bank details with no JSON data.")
             return jsonify({"message": "Request body must be JSON"}), 400
 
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         bank_details_filter = {"config_type": "bank_details"}
 
         payload_to_save = {}
@@ -479,7 +479,7 @@ def update_bank_details(decoded_token_data):
 def get_making_charges_percentage():
     current_app.logger.info("Attempting to fetch making charges percentage.")
     try:
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         making_charges_doc = settings_collection.find_one({"config_type": "making_charges"})
 
         if making_charges_doc:
@@ -518,7 +518,7 @@ def admin_update_making_charges_percentage(decoded_token_data):
             current_app.logger.warning(f"Admin {admin_username} making charges update: Percentage not a valid number.")
             return jsonify({"message": "Percentage must be a valid number."}), 400
 
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         config_filter = {"config_type": "making_charges"}
 
         update_payload = {
@@ -585,7 +585,7 @@ def get_slider_images():
     Publicly accessible.
     """
     try:
-        slider_images_collection = current_app.db.slider_images
+        slider_images_collection = mongo.db.slider_images
         # Optionally sort by upload date if you add an 'order' field or by 'uploadedAt'
         images_cursor = slider_images_collection.find({}).sort("uploadedAt", -1) # Sort by newest first
         images_list = []
@@ -621,7 +621,7 @@ def admin_add_slider_image(decoded_token_data):
             current_app.logger.warning(f"Admin {admin_username} slider image add: Invalid URL format for '{image_url}'.")
             return jsonify({"message": "Invalid imageUrl format"}), 400
 
-        slider_images_collection = current_app.db.slider_images
+        slider_images_collection = mongo.db.slider_images
 
         # Optional: Check for duplicates if necessary, though multiple uses of same URL might be fine.
         # existing_image = slider_images_collection.find_one({"imageUrl": image_url})
@@ -667,7 +667,7 @@ def admin_delete_slider_image(decoded_token_data, image_id):
             current_app.logger.warning(f"Admin {admin_username} slider image delete: Invalid ID format {image_id}.")
             return jsonify({"message": "Invalid slider image ID format"}), 400
 
-        slider_images_collection = current_app.db.slider_images
+        slider_images_collection = mongo.db.slider_images
         result = slider_images_collection.delete_one({"_id": db_id})
 
         if result.deleted_count == 0:
@@ -697,7 +697,7 @@ def get_contact_info():
     """
     current_app.logger.info("Fetching public contact information.")
     try:
-        # --- FIX: Use current_app.db instead of current_app.db ---
+        # --- FIX: Use current_app.db instead of mongo.db ---
         settings_collection = current_app.db.app_settings
         contact_doc = settings_collection.find_one({"config_type": "contact_info"})
 
@@ -732,7 +732,7 @@ def admin_update_contact_info(decoded_token_data):
         if not data:
             return jsonify({"message": "Request body must be JSON"}), 400
 
-        # --- FIX: Use current_app.db instead of current_app.db ---
+        # --- FIX: Use current_app.db instead of mongo.db ---
         settings_collection = current_app.db.app_settings
         config_filter = {"config_type": "contact_info"}
 
@@ -789,7 +789,7 @@ def get_home_video_details():
     """
     current_app.logger.info("Attempting to fetch home screen video details.")
     try:
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         # Assuming a single document stores this config, identified by 'config_type'
         video_config_doc = settings_collection.find_one({"config_type": "home_video"})
 
@@ -845,7 +845,7 @@ def admin_set_or_update_home_video(decoded_token_data): # Renamed for clarity (c
              current_app.logger.warning(f"Admin {admin_username} home video set/update: Invalid title format.")
              return jsonify({"message": "Title must be a string."}), 400
 
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         config_filter = {"config_type": "home_video"}
 
         update_payload = {
@@ -904,7 +904,7 @@ def admin_clear_home_video(decoded_token_data):
     admin_username = decoded_token_data.get('username', 'Unknown Admin')
     current_app.logger.info(f"Admin {admin_username} attempting to clear home screen video.")
     try:
-        settings_collection = current_app.db.app_settings
+        settings_collection = mongo.db.app_settings
         config_filter = {"config_type": "home_video"}
 
         update_payload = {
@@ -965,7 +965,7 @@ def admin_login():
             current_app.logger.warning(f"Admin login attempt with missing username or password. Username provided: '{username}'")
             return jsonify({"message": "Username and password are required"}), 400
 
-        admin_user = current_app.db.admins.find_one({"username": username})
+        admin_user = mongo.db.admins.find_one({"username": username})
 
         if not admin_user:
             current_app.logger.warning(f"Admin login attempt for non-existent user: {username}")
@@ -1024,7 +1024,7 @@ def admin_login():
 @main_bp.route('/metal-rates', methods=['GET'])
 def get_metal_rates(): # Renamed from get_purity_rates
     try:
-        rates_collection = current_app.db.purity_rates
+        rates_collection = mongo.db.purity_rates
         rates_cursor = rates_collection.find({}) # Fetches all rates (gold and silver)
         rates_list = []
         for rate in rates_cursor:
@@ -1084,7 +1084,7 @@ def update_metal_rate(decoded_token_data): # Renamed from update_purity_rate
             )
             return jsonify({"message": "newPrice must be a valid number"}), 400
 
-        rates_collection = current_app.db.purity_rates
+        rates_collection = mongo.db.purity_rates
 
         # Find the document and update its price and lastUpdated timestamp
         result = rates_collection.update_one(
@@ -1149,7 +1149,7 @@ def get_coin_rates():
     Fetches all coin prices from the 'coin_prices' collection.
     """
     try:
-        coin_prices_collection = current_app.db.coin_prices
+        coin_prices_collection = mongo.db.coin_prices
         coin_prices_cursor = coin_prices_collection.find({})
         coin_prices_list = []
         for coin_price_doc in coin_prices_cursor:
@@ -1171,7 +1171,7 @@ def get_coin_rates():
 def admin_get_all_coins(decoded_token_data):
     """ Admin endpoint to fetch all coin prices for management. """
     try:
-        coin_prices_collection = current_app.db.coin_prices
+        coin_prices_collection = mongo.db.coin_prices
         coin_prices_cursor = coin_prices_collection.find({})
         coin_prices_list = []
         for coin_price_doc in coin_prices_cursor:
@@ -1225,11 +1225,11 @@ def admin_add_coin(decoded_token_data):
             "lastUpdated": datetime.datetime.utcnow()
         }
 
-        if current_app.db.coin_prices.find_one({"coinId": new_coin["coinId"]}):
+        if mongo.db.coin_prices.find_one({"coinId": new_coin["coinId"]}):
             current_app.logger.warning(f"Admin {admin_username} attempted to add duplicate coinId: {new_coin['coinId']}")
             return jsonify({"message": f"Coin with coinId '{new_coin['coinId']}' already exists."}), 409
 
-        result = current_app.db.coin_prices.insert_one(new_coin)
+        result = mongo.db.coin_prices.insert_one(new_coin)
         new_coin['_id'] = str(result.inserted_id)
         new_coin['lastUpdated'] = new_coin['lastUpdated'].isoformat() + "Z"
 
@@ -1261,7 +1261,7 @@ def admin_update_coin(decoded_token_data, mongo_id):
         if "coinId" in data:
             if not isinstance(data["coinId"], str) or not data["coinId"].strip():
                  return jsonify({"message": "coinId must be a non-empty string"}), 400
-            existing_coin_with_new_id = current_app.db.coin_prices.find_one({"coinId": data["coinId"].strip(), "_id": {"$ne": db_id}})
+            existing_coin_with_new_id = mongo.db.coin_prices.find_one({"coinId": data["coinId"].strip(), "_id": {"$ne": db_id}})
             if existing_coin_with_new_id:
                 return jsonify({"message": f"Another coin with coinId '{data['coinId']}' already exists."}), 409
             update_fields["coinId"] = data["coinId"].strip()
@@ -1296,7 +1296,7 @@ def admin_update_coin(decoded_token_data, mongo_id):
 
         update_fields["lastUpdated"] = datetime.datetime.utcnow()
 
-        result = current_app.db.coin_prices.update_one(
+        result = mongo.db.coin_prices.update_one(
             {"_id": db_id},
             {"$set": update_fields}
         )
@@ -1305,7 +1305,7 @@ def admin_update_coin(decoded_token_data, mongo_id):
             current_app.logger.warning(f"Admin {admin_username} failed to update non-existent coin MongoDB ID: {mongo_id}")
             return jsonify({"message": "Coin not found"}), 404
 
-        updated_coin = current_app.db.coin_prices.find_one({"_id": db_id})
+        updated_coin = mongo.db.coin_prices.find_one({"_id": db_id})
         updated_coin['_id'] = str(updated_coin['_id']) # Should already be a string if fetched by _id from update
         if 'lastUpdated' in updated_coin and isinstance(updated_coin['lastUpdated'], datetime.datetime):
             updated_coin['lastUpdated'] = updated_coin['lastUpdated'].isoformat() + "Z"
@@ -1329,7 +1329,7 @@ def admin_delete_coin(decoded_token_data, mongo_id):
         except InvalidId:
             return jsonify({"message": "Invalid coin MongoDB ID format"}), 400
 
-        result = current_app.db.coin_prices.delete_one({"_id": db_id})
+        result = mongo.db.coin_prices.delete_one({"_id": db_id})
 
         if result.deleted_count == 0:
             current_app.logger.warning(f"Admin {admin_username} failed to delete non-existent coin MongoDB ID: {mongo_id}")
