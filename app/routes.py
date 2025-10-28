@@ -8,7 +8,7 @@ from werkzeug.security import check_password_hash # For login
 import jwt # For login (PyJWT library)
 import datetime # For login token expiration and lastUpdated timestamp
 from functools import wraps # Needed for the token_required decorator
-
+from firebase_admin import messaging # <--- ADD THIS LINE
 def to_iso_z(dt):
     """Converts a datetime object to ISO 8601 format with a 'Z' for UTC."""
     if isinstance(dt, datetime.datetime):
@@ -945,6 +945,62 @@ def admin_clear_home_video(decoded_token_data):
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # +++ END: HOME SCREEN VIDEO ROUTES +++++++++++++++++++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ NEW: PUSH NOTIFICATION ROUTE ++++++++++++++++++++++++++++
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+@main_bp.route('/admin/send-notification', methods=['POST'])
+@token_required
+def admin_send_notification(decoded_token_data):
+    """
+    Sends a push notification to all app users.
+    Requires admin authentication.
+    Expects JSON: {"title": "Notification Title", "body": "Notification body message"}
+    """
+    admin_username = decoded_token_data.get('username', 'Unknown Admin')
+    current_app.logger.info(f"Notification send attempt by admin: {admin_username}")
+
+    try:
+        data = request.get_json()
+        if not data or 'title' not in data or 'body' not in data:
+            current_app.logger.warning(f"Admin {admin_username} notification attempt with missing title or body.")
+            return jsonify({"error": "Request must include a 'title' and a 'body'"}), 400
+
+        title = data['title']
+        body = data['body']
+
+        if not title or not isinstance(title, str) or not title.strip():
+            return jsonify({"error": "Title must be a non-empty string"}), 400
+
+        if not body or not isinstance(body, str) or not body.strip():
+            return jsonify({"error": "Body must be a non-empty string"}), 400
+
+        current_app.logger.info(f"Preparing to send notification: Title='{title}', Body='{body}'")
+
+        # Create the message payload for Firebase.
+        message = messaging.Message(
+            # The 'notification' object is what the user sees on their phone.
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            # This sends the message to every device subscribed to the 'all_users' topic.
+            topic='all_users',
+        )
+
+        # Send the message and get a response from Firebase.
+        response = messaging.send(message)
+        current_app.logger.info(f"Successfully sent notification message to Firebase. Response: {response}")
+        return jsonify({"message": "Notification sent successfully to all users!"}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error sending notification by admin {admin_username}: {e}", exc_info=True)
+        return jsonify({"error": f"An internal server error occurred: {e}"}), 500
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# +++ END OF NEW ROUTE ++++++++++++++++++++++++++++++++++++++++
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
